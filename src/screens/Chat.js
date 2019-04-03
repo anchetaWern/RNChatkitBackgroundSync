@@ -5,6 +5,15 @@ import { ChatManager, TokenProvider } from "@pusher/chatkit-client";
 import axios from "axios";
 import Config from "react-native-config";
 
+import { connect } from "react-redux";
+
+import {
+  setRoom,
+  setMessages,
+  putMessage,
+  putOlderMessages
+} from "../actions";
+
 const CHATKIT_INSTANCE_LOCATOR_ID = `v1:us1:${Config.CHATKIT_INSTANCE_LOCATOR_ID}`;
 const CHATKIT_SECRET_KEY = Config.CHATKIT_SECRET_KEY;
 const CHATKIT_TOKEN_PROVIDER_ENDPOINT = `https://us1.pusherplatform.io/services/chatkit_token_provider/v1/${Config.CHATKIT_INSTANCE_LOCATOR_ID}/token`;
@@ -22,7 +31,6 @@ class Chat extends Component {
   };
 
   state = {
-    messages: [],
     is_initialized: false,
     is_loading: false,
     is_sending: false,
@@ -47,20 +55,35 @@ class Chat extends Component {
 
 
   componentDidMount() {
+    const { isConnected } = this.props;
 
     this.enterChat();
 
+    if (!isConnected) {
+      this.setState({
+        is_initialized: true
+      });
+    }
   }
 
 
   enterChat = async () => {
+
+    const { setRoom, setMessages } = this.props;
 
     try {
       if (!this.chatManager) {
         this.chatManager = new ChatManager({
           instanceLocator: CHATKIT_INSTANCE_LOCATOR_ID,
           userId: this.user_id,
-          tokenProvider: new TokenProvider({ url: CHATKIT_TOKEN_PROVIDER_ENDPOINT })
+          tokenProvider: new TokenProvider({ url: CHATKIT_TOKEN_PROVIDER_ENDPOINT }),
+          logger: {
+            verbose: console.log,
+            debug: console.log,
+            info: console.log,
+            warn: console.log,
+            error: console.log,
+          }
         });
 
         let currentUser = await this.chatManager.connect();
@@ -77,10 +100,17 @@ class Chat extends Component {
         const room = response.data;
         this.room_id = room.id.toString();
 
+        setRoom({
+          id: this.room_id,
+          name: this.room_name
+        });
+
         await this.setState({
           is_initialized: true
         });
       }
+
+      setMessages([]);
 
       await this.currentUser.subscribeToRoom({
         roomId: this.room_id,
@@ -97,12 +127,10 @@ class Chat extends Component {
 
   onReceive = async (data) => {
 
-    const { messages } = this.state;
+    const { messages, putMessage } = this.props;
     const { message } = await this.getMessage(data);
 
-    await this.setState((previousState) => ({
-      messages: GiftedChat.append(previousState.messages, message)
-    }));
+    putMessage(message);
 
     if (messages && messages.length > 9) {
       this.setState({
@@ -114,22 +142,26 @@ class Chat extends Component {
 
   onSend([message]) {
 
-    let msg = {
-      text: message.text,
-      roomId: this.room_id
-    };
+    const { isConnected } = this.props;
 
-    this.setState({
-      is_sending: true
-    });
-
-    this.currentUser.sendMessage(msg).then(() => {
+    if (isConnected) {
+      let msg = {
+        text: message.text,
+        roomId: this.room_id
+      };
 
       this.setState({
-        is_sending: false
+        is_sending: true
       });
-    });
 
+      this.currentUser.sendMessage(msg).then(() => {
+        this.attachment = null;
+
+        this.setState({
+          is_sending: false
+        });
+      });
+    }
   }
 
 
@@ -176,42 +208,43 @@ class Chat extends Component {
 
   loadEarlierMessages = async () => {
 
-    const { messages } = this.state;
+    const { putOlderMessages, isConnected, messages } = this.props;
 
-    this.setState({
-      is_loading: true
-    });
-
-    const earliest_message_id = Math.min(
-      ...messages.map(m => parseInt(m._id))
-    );
-
-    try {
-      let messages = await this.currentUser.fetchMessages({
-        roomId: this.room_id,
-        initialId: earliest_message_id,
-        direction: "older",
-        limit: 10
+    if (isConnected) {
+      this.setState({
+        is_loading: true
       });
 
-      if (!messages.length) {
-        this.setState({
-          show_load_earlier: false
+      const earliest_message_id = Math.min(
+        ...messages.map(m => parseInt(m._id))
+      );
+
+      try {
+        let messages = await this.currentUser.fetchMessages({
+          roomId: this.room_id,
+          initialId: earliest_message_id,
+          direction: "older",
+          limit: 10
         });
+
+        if (!messages.length) {
+          this.setState({
+            show_load_earlier: false
+          });
+        }
+
+        let earlier_messages = [];
+        await this.asyncForEach(messages, async (msg) => {
+          let { message } = await this.getMessage(msg);
+          earlier_messages.push(message);
+        });
+
+        putOlderMessages(earlier_messages);
+
+      } catch (load_messages_err) {
+        console.log("error occured while trying to load older messages", load_messages_err);
       }
 
-      let earlier_messages = [];
-      await this.asyncForEach(messages, async (msg) => {
-        let { message } = await this.getMessage(msg);
-        earlier_messages.push(message);
-      });
-
-      await this.setState(previousState => ({
-        messages: previousState.messages.concat(earlier_messages)
-      }));
-
-    } catch (load_messages_err) {
-      console.log("error occured while trying to load older messages", load_messages_err);
     }
 
     await this.setState({
@@ -221,7 +254,8 @@ class Chat extends Component {
 
 
   render() {
-    const { is_initialized, show_load_earlier, messages } = this.state;
+    const { is_initialized, show_load_earlier } = this.state;
+    const { messages } = this.props;
 
     return (
       <View style={styles.container}>
@@ -252,7 +286,37 @@ class Chat extends Component {
 
 }
 
-export default Chat;
+const mapStateToProps = ({ network, chat }) => {
+  const { isConnected } = network;
+  const { user, messages } = chat;
+  return {
+    isConnected,
+    user,
+    messages
+  };
+};
+
+const mapDispatchToProps = dispatch => {
+  return {
+    setRoom: room => {
+      dispatch(setRoom(room));
+    },
+    setMessages: messages => {
+      dispatch(setMessages(messages));
+    },
+    putMessage: message => {
+      dispatch(putMessage(message));
+    },
+    putOlderMessages: older_messages => {
+      dispatch(putOlderMessages(older_messages));
+    }
+  };
+};
+
+export default connect(
+  mapStateToProps,
+  mapDispatchToProps
+)(Chat);
 
 
 const styles = {
