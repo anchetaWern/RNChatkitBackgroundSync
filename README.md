@@ -1,4 +1,5 @@
 # RNChatkitBackgroundSync
+
 A React Native chat app built with Chatkit with background sync for offline messages access
 
 ### Prerequisites
@@ -35,6 +36,7 @@ react-native eject
 ```
 react-native link react-native-gesture-handler
 react-native link react-native-config
+react-native link react-native-background-timer
 ```
 
 5.  Update `android/app/build.gradle` file:
@@ -46,7 +48,7 @@ apply from: "../../node_modules/react-native/react.gradle"
 apply from: project(':react-native-config').projectDir.getPath() + "/dotenv.gradle"
 ```
 
-6. Update `android/app/src/main/AndroidManifest.xml` file and add the following permission:
+6.  Update `android/app/src/main/AndroidManifest.xml` file and add the following permission:
 
 ```
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -63,7 +65,7 @@ yarn
 
 9.  Update the `server/.env` file with your Chatkit credentials.
 
-10.  Run the server:
+10. Run the server:
 
 ```
 yarn start
