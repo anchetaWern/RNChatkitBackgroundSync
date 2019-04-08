@@ -9,7 +9,7 @@ const CHATKIT_INSTANCE_LOCATOR_ID = `v1:us1:${Config.CHATKIT_INSTANCE_LOCATOR_ID
 const CHATKIT_SECRET_KEY = Config.CHATKIT_SECRET_KEY;
 const CHATKIT_TOKEN_PROVIDER_ENDPOINT = `https://us1.pusherplatform.io/services/chatkit_token_provider/v1/${Config.CHATKIT_INSTANCE_LOCATOR_ID}/token`;
 
-const CHAT_SERVER = "YOUR NGROK HTTPS URL/rooms";
+const CHAT_SERVER = "YOUR NGROK HTTPS URL";
 
 
 class Chat extends Component {
@@ -67,7 +67,7 @@ class Chat extends Component {
         this.currentUser = currentUser;
 
         const response = await axios.post(
-          CHAT_SERVER,
+          `${CHAT_SERVER}/rooms`,
           {
             user_id: this.user_id,
             room_name: this.room_name
