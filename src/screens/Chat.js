@@ -1,11 +1,12 @@
 import React, { Component } from "react";
-import { View, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator, AppState } from "react-native";
 import { GiftedChat, Send, Message } from "react-native-gifted-chat";
 import { ChatManager, TokenProvider } from "@pusher/chatkit-client";
 import axios from "axios";
 import Config from "react-native-config";
 
 import { connect } from "react-redux";
+import BackgroundTimer from "react-native-background-timer";
 
 import {
   setRoom,
@@ -34,7 +35,8 @@ class Chat extends Component {
     is_initialized: false,
     is_loading: false,
     is_sending: false,
-    show_load_earlier: false
+    show_load_earlier: false,
+    app_state: AppState.currentState
   };
 
 
@@ -55,9 +57,53 @@ class Chat extends Component {
 
 
   componentDidMount() {
-    const { isConnected } = this.props;
+    const { isConnected, putMessage, messages } = this.props;
+    AppState.addEventListener('change', this._handleAppStateChange);
 
-    this.enterChat();
+    if (isConnected) {
+      this.enterChat();
+    }
+
+    BackgroundTimer.runBackgroundTimer(() => {
+      const { app_state } = this.state;
+      if (isConnected && app_state !== 'active') {
+        // fetch messages from the server
+        console.log('app went to background, now getting messages from the server...');
+
+        const latest_message_id = Math.max(
+          ...messages.map(m => parseInt(m._id))
+        );
+
+        axios.get(`${CHAT_SERVER}/messages`, {
+          params: {
+            room_id: this.room_id,
+            initial_id: latest_message_id
+          }
+        })
+        .then((response) => {
+          const { messages } = response.data;
+          messages.reverse().forEach((msg) => {
+            const text = msg.parts.find(part => part.type === 'text/plain').content;
+            const message = {
+              _id: msg.id,
+              text: text,
+              createdAt: msg.created_at,
+              user:{
+                _id: msg.user_id,
+                avatar: "https://png.pngtree.com/svg/20170602/0db185fb9c.png"
+              }
+            }
+
+            putMessage(message);
+          });
+
+        })
+        .catch((err) => {
+          console.log("error fetching messages from server: ", err);
+        });
+
+      }
+    }, 60000);
 
     if (!isConnected) {
       this.setState({
@@ -65,6 +111,18 @@ class Chat extends Component {
       });
     }
   }
+
+
+  _handleAppStateChange = (nextAppState) => {
+    if (nextAppState !== 'active' && this.currentUser) {
+      this.currentUser.disconnect();
+    } else if (nextAppState === 'active') {
+      this.enterChat();
+    }
+    this.setState({
+      app_state: nextAppState
+    });
+  };
 
 
   enterChat = async () => {
@@ -112,7 +170,7 @@ class Chat extends Component {
 
       setMessages([]);
 
-      await this.currentUser.subscribeToRoom({
+      await this.currentUser.subscribeToRoomMultipart({
         roomId: this.room_id,
         hooks: {
           onMessage: this.onReceive
@@ -180,15 +238,16 @@ class Chat extends Component {
   }
 
 
-  getMessage = async ({ id, senderId, text, createdAt }) => {
+  getMessage = async ({ id, sender, parts, createdAt }) => {
+
+    const text = parts.find(part => part.partType === 'inline').payload.content;
 
     const message = {
       _id: id,
       text: text,
       createdAt: new Date(createdAt),
       user: {
-        _id: senderId,
-        name: senderId,
+        _id: sender.id,
         avatar: "https://png.pngtree.com/svg/20170602/0db185fb9c.png"
       }
     };
@@ -220,7 +279,7 @@ class Chat extends Component {
       );
 
       try {
-        let messages = await this.currentUser.fetchMessages({
+        let messages = await this.currentUser.fetchMultipartMessages({
           roomId: this.room_id,
           initialId: earliest_message_id,
           direction: "older",
@@ -242,7 +301,7 @@ class Chat extends Component {
         putOlderMessages(earlier_messages);
 
       } catch (load_messages_err) {
-        console.log("error occured while trying to load older messages", load_messages_err);
+        console.log("error occured while trying to load older messages: ", load_messages_err);
       }
 
     }
