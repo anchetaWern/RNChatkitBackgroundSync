@@ -73,6 +73,23 @@ app.post("/rooms", async (req, res) => {
   }
 });
 
+app.get("/messages", async (req, res) => {
+
+  const { room_id, initial_id } = req.query;
+  try {
+    const messages = await chatkit.fetchMultipartMessages({
+      roomId: room_id,
+      limit: 10,
+      initialId: initial_id
+    });
+
+    res.send({ messages });
+
+  } catch (err) {
+    console.log("error fetching messages: ", err);
+  }
+});
+
 const PORT = 5000;
 app.listen(PORT, (err) => {
   if (err) {
