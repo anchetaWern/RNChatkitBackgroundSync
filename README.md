@@ -1,6 +1,8 @@
 # RNChatkitBackgroundSync
 
-A React Native chat app built with Chatkit with background sync for offline messages access
+A React Native chat app built with Chatkit with background sync for offline messages access.
+
+You can read the full tutorial at: [Syncing Chatkit messages in the background in React Native](https://pusher.com/tutorials/background-sync-react-native).
 
 ### Prerequisites
 
